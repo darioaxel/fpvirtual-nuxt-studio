@@ -4,7 +4,7 @@ import { useUI } from './useUI'
 import { useContext } from './useContext'
 import { useDraftDocuments } from './useDraftDocuments'
 import { useDraftMedias } from './useDraftMedias'
-import { ref } from 'vue'
+import { ref, reactive } from 'vue'
 import { useTree } from './useTree'
 import type { RouteLocationNormalized } from 'vue-router'
 import type { GitOptions, DatabaseItem } from '../types'
@@ -23,17 +23,20 @@ export const useStudio = createSharedComposable(() => {
     enableDevMode()
   }
 
-  const gitOptions: GitOptions = {
+  // Leer branch inicial desde localStorage (inyectado por la app padre)
+  const initialBranch = localStorage.getItem('studio-user-branch') || host.repository.branch
+
+  const gitOptions: GitOptions = reactive({
     provider: host.repository.provider,
     owner: host.repository.owner,
     repo: host.repository.repo,
-    branch: host.repository.branch,
+    branch: initialBranch,
     rootDir: host.repository.rootDir,
     token: host.user.get().accessToken,
     authorName: host.user.get().name,
     authorEmail: host.user.get().email,
     instanceUrl: host.repository.instanceUrl,
-  }
+  })
 
   const gitProvider = useGitProvider(gitOptions, devMode.value)
   const ui = useUI(host)
@@ -46,6 +49,35 @@ export const useStudio = createSharedComposable(() => {
   const context = useContext(host, gitProvider, documentTree, mediaTree, aiContextTree)
 
   ui.setLocale(host.meta.defaultLocale)
+
+  // Listener postMessage para cambio de branch dinámico
+  const allowedOrigins: string[] = (window as any).__STUDIO_ALLOWED_ORIGINS__ || [window.location.origin]
+  window.addEventListener('message', async (event) => {
+    if (!allowedOrigins.includes(event.origin)) {
+      return
+    }
+
+    if (event.data?.type === 'studio:set-branch') {
+      const newBranch = event.data.branch
+      if (!newBranch || newBranch === gitOptions.branch) {
+        return
+      }
+
+      // Persistir en localStorage para recargas
+      localStorage.setItem('studio-user-branch', newBranch)
+
+      // Actualizar opciones y provider
+      gitOptions.branch = newBranch
+      gitProvider.setBranch(newBranch)
+
+      // Si Studio ya está inicializado, recargar contenido del nuevo branch
+      if (isReady.value) {
+        await draftDocuments.load()
+        await draftMedias.load()
+        host.app.requestRerender()
+      }
+    }
+  })
 
   host.on.mounted(async () => {
     host.app.registerServiceWorker()

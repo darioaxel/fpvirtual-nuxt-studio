@@ -13,5 +13,6 @@ export function createNullProvider(_options: GitOptions): GitProviderAPI {
     getCommitUrl: () => '',
     getFileUrl: (_feature, _fsPath) => '',
     getRepositoryInfo: () => ({ owner: '', repo: '', branch: '', provider: null }),
+    setBranch: (_branch: string) => {},
   }
 }

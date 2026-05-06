@@ -37,10 +37,29 @@ function createProvider(provider: GitProviderType | null, options: GitOptions): 
 
 export const useGitProvider = createSharedComposable((options: GitOptions, devMode: boolean = false) => {
   const provider = devMode ? null : options.provider
+  let currentApi = createProvider(provider, options)
+
+  // Proxy que delega siempre al provider actual
+  // Esto permite cambiar de branch en caliente sin que los consumidores noten la diferencia
+  const api = new Proxy({} as GitProviderAPI, {
+    get(_, prop) {
+      const value = (currentApi as any)[prop]
+      if (typeof value === 'function') {
+        return value.bind(currentApi)
+      }
+      return value
+    },
+  })
+
+  function setBranch(branch: string) {
+    options.branch = branch
+    currentApi = createProvider(provider, options)
+  }
 
   return {
     name: getProviderName(provider),
     icon: getProviderIcon(provider),
-    api: createProvider(provider, options),
+    api,
+    setBranch,
   }
 })

@@ -8,7 +8,8 @@ import { StudioFeature } from '../../types'
 const logger = consola.withTag('Nuxt Studio')
 
 export function createGitLabProvider(options: GitOptions): GitProviderAPI {
-  const { owner, repo, token, branch, rootDir, authorName, authorEmail, instanceUrl = 'https://gitlab.com' } = options
+  const { owner, repo, token, rootDir, authorName, authorEmail, instanceUrl = 'https://gitlab.com' } = options
+  let branch = options.branch
   const gitFiles: Record<string, GitFile> = {}
 
   // Remove trailing slash from instanceUrl if present
@@ -32,7 +33,8 @@ export function createGitLabProvider(options: GitOptions): GitProviderAPI {
     headers,
   })
 
-  async function fetchFile(path: string, { cached = false }: { cached?: boolean } = {}): Promise<GitFile | null> {
+  async function fetchFile(path: string, { cached = false, overrideBranch }: { cached?: boolean; overrideBranch?: string } = {}): Promise<GitFile | null> {
+    const targetBranch = overrideBranch || branch
     path = joinURL(rootDir, path)
     if (cached) {
       const file = gitFiles[path]
@@ -44,7 +46,7 @@ export function createGitLabProvider(options: GitOptions): GitProviderAPI {
     try {
       const encodedPath = encodeURIComponent(path)
       // GitLab API returns base64-encoded content when using /repository/files endpoint (without /raw)
-      const fileMetadata = await $api(`/repository/files/${encodedPath}?ref=${branch}`)
+      const fileMetadata = await $api(`/repository/files/${encodedPath}?ref=${targetBranch}`)
 
       const gitFile: GitFile = {
         name: path.split('/').pop() || path,
@@ -80,7 +82,7 @@ export function createGitLabProvider(options: GitOptions): GitProviderAPI {
     }
   }
 
-  function commitFiles(files: RawFile[], message: string): Promise<CommitResult | null> {
+  function commitFiles(files: RawFile[], message: string, overrideBranch?: string): Promise<CommitResult | null> {
     if (!token) {
       return Promise.resolve(null)
     }
@@ -92,7 +94,7 @@ export function createGitLabProvider(options: GitOptions): GitProviderAPI {
     return commitFilesToGitLab({
       owner,
       repo,
-      branch,
+      branch: overrideBranch || branch,
       files,
       message,
       authorName,
@@ -172,6 +174,10 @@ export function createGitLabProvider(options: GitOptions): GitProviderAPI {
     }
   }
 
+  function setBranch(newBranch: string) {
+    branch = newBranch
+  }
+
   return {
     fetchFile,
     commitFiles,
@@ -180,5 +186,6 @@ export function createGitLabProvider(options: GitOptions): GitProviderAPI {
     getCommitUrl,
     getFileUrl,
     getRepositoryInfo,
+    setBranch,
   }
 }

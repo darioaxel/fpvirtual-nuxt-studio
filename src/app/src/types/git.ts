@@ -44,13 +44,14 @@ export interface RawFile {
 }
 
 export interface GitProviderAPI {
-  fetchFile(path: string, options?: { cached?: boolean }): Promise<GitFile | null>
-  commitFiles(files: RawFile[], message: string): Promise<CommitResult | null>
+  fetchFile(path: string, options?: { cached?: boolean; overrideBranch?: string }): Promise<GitFile | null>
+  commitFiles(files: RawFile[], message: string, overrideBranch?: string): Promise<CommitResult | null>
   getRepositoryUrl(): string
   getBranchUrl(): string
   getCommitUrl(sha: string): string
   getFileUrl(feature: StudioFeature, fsPath: string): string
   getRepositoryInfo(): { owner: string, repo: string, branch: string, provider: GitProviderType | null }
+  setBranch(branch: string): void
 }
 
 export interface CommitResult {

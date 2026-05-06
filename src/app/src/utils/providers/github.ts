@@ -15,7 +15,8 @@ const NUXT_STUDIO_COAUTHOR = 'Co-authored-by: Nuxt Studio <noreply@nuxt.studio>'
 const logger = consola.withTag('Nuxt Studio')
 
 export function createGitHubProvider(options: GitOptions): GitProviderAPI {
-  const { owner, repo, token, branch, rootDir, authorName, authorEmail } = options
+  const { owner, repo, token, rootDir, authorName, authorEmail } = options
+  let branch = options.branch
   const gitFiles: Record<string, GitFile> = {}
 
   const instanceUrl = withoutTrailingSlash(options.instanceUrl || 'https://github.com')
@@ -83,7 +84,8 @@ export function createGitHubProvider(options: GitOptions): GitProviderAPI {
     }
   }
 
-  async function fetchFile(path: string, { cached = false }: { cached?: boolean } = {}): Promise<GitFile | null> {
+  async function fetchFile(path: string, { cached = false, overrideBranch }: { cached?: boolean; overrideBranch?: string } = {}): Promise<GitFile | null> {
+    const targetBranch = overrideBranch || branch
     path = joinURL(rootDir, path)
     if (cached) {
       const file = gitFiles[path]
@@ -93,7 +95,7 @@ export function createGitHubProvider(options: GitOptions): GitProviderAPI {
     }
 
     try {
-      const ghResponse = await $repositoryApi(`/contents/${path}?ref=${branch}`)
+      const ghResponse = await $repositoryApi(`/contents/${path}?ref=${targetBranch}`)
       const ghFile: GitFile = {
         ...ghResponse,
         provider: 'github' as const,
@@ -122,7 +124,7 @@ export function createGitHubProvider(options: GitOptions): GitProviderAPI {
     }
   }
 
-  async function commitFiles(files: RawFile[], message: string): Promise<CommitResult | null> {
+  async function commitFiles(files: RawFile[], message: string, overrideBranch?: string): Promise<CommitResult | null> {
     if (!token) {
       return Promise.resolve(null)
     }
@@ -160,7 +162,7 @@ export function createGitHubProvider(options: GitOptions): GitProviderAPI {
     return commitFilesToGitHub({
       owner,
       repo,
-      branch,
+      branch: overrideBranch || branch,
       files,
       message: fullMessage,
       authorName: commitAuthorName,
@@ -271,6 +273,10 @@ export function createGitHubProvider(options: GitOptions): GitProviderAPI {
     }
   }
 
+  function setBranch(newBranch: string) {
+    branch = newBranch
+  }
+
   return {
     fetchFile,
     commitFiles,
@@ -279,5 +285,6 @@ export function createGitHubProvider(options: GitOptions): GitProviderAPI {
     getCommitUrl,
     getFileUrl,
     getRepositoryInfo,
+    setBranch,
   }
 }
