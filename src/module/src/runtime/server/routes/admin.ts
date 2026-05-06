@@ -12,6 +12,13 @@ export default eventHandler((event) => {
     })
   }
 
+  // FPVirtual: Si hay un PAT de servicio, no requerir OAuth
+  const hasServiceToken = process.env.STUDIO_GITHUB_TOKEN || process.env.STUDIO_GITLAB_TOKEN
+  if (hasServiceToken) {
+    const redirectUrl = redirect && String(redirect).startsWith('/') ? String(redirect) : '/'
+    return sendRedirect(event, redirectUrl)
+  }
+
   // Detect providers based on configured environment variables
   const hasGithub = process.env.STUDIO_GITHUB_CLIENT_ID && 'github'
   const hasGitlab = process.env.STUDIO_GITLAB_APPLICATION_ID && 'gitlab'

@@ -3,15 +3,19 @@
 > **Repo original:** `nuxt-content/nuxt-studio` (MIT License)  
 > **Fork:** `fpvirtual-nuxt-studio`  
 > **Rama:** `feat/multi-branch`  
-> **Propósito:** Permitir branch dinámico por usuario para edición multi-usuario vía iframe.
+> **Propósito:** Permitir branch dinámico por usuario para edición multi-usuario vía iframe, usando PAT de servicio sin requerir OAuth.
 
 ---
 
 ## Resumen de cambios
 
-Se han modificado **6 archivos** para hacer el branch reactivo y soportar comunicación `postMessage` desde la app padre.
+Se han modificado **9 archivos** en tres categorías:
+1. **Branch dinámico** (6 archivos) — postMessage + proxy pattern
+2. **Autenticación PAT** (3 archivos) — modo facade sin OAuth
 
 ---
+
+## Parte 1: Branch Dinámico (postMessage)
 
 ### 1. `src/app/src/types/git.ts`
 
@@ -76,16 +80,92 @@ Se han modificado **6 archivos** para hacer el branch reactivo y soportar comuni
 
 ---
 
-### 7. `src/app/vite.config.ts`
+## Parte 2: Autenticación PAT (modo facade)
 
-- Desactivado `vite-plugin-dts` para evitar errores de tipo del upstream durante el build local.
+### 7. `src/module/src/runtime/utils/activation.ts`
 
-**Nota:** Esto no afecta el runtime. Solo evita que `vue-tsc` falle con errores de `$t` (i18n) y versiones incompatibles de `@tiptap/vue-3` en el build de producción del fork.
+**Cambio:** Añadida detección de PAT de servicio antes de requerir sesión OAuth.
+
+```ts
+const serviceToken = getServiceToken(config.repository.provider)
+if (serviceToken) {
+  // Activar Studio directamente con el PAT, sin OAuth
+  await onStudioActivation({
+    provider: config.repository.provider,
+    email: 'service@studio.local',
+    name: 'Studio Service',
+    accessToken: serviceToken,
+    providerId: 'service',
+    avatar: '',
+  })
+  return
+}
+```
+
+**Motivo:** Según DA-2, se usa un único GitLab PAT con scope `api` en variables de entorno del servidor. Los usuarios no necesitan cuenta en GitLab. El token nunca viaja al cliente explícitamente; el servidor lo inyecta en la sesión de Studio.
 
 ---
 
-## Flujo de comunicación (App Padre ↔ Studio)
+### 8. `src/module/src/runtime/server/routes/auth/session.get.ts`
 
+**Cambio:** Si no hay sesión activa pero hay `STUDIO_GITLAB_TOKEN` (o `STUDIO_GITHUB_TOKEN`), devuelve una sesión de servicio válida con el PAT.
+
+```ts
+if (!session.data?.user) {
+  const serviceToken = getServiceToken(config?.repository?.provider)
+  if (serviceToken) {
+    return {
+      user: {
+        provider: config.repository.provider,
+        email: 'service@studio.local',
+        name: 'Studio Service',
+        accessToken: serviceToken,
+        providerId: 'service',
+        avatar: '',
+      },
+      id: 'service-session',
+    }
+  }
+}
+```
+
+**Motivo:** El cliente de Studio hace polling a `/__nuxt_studio/auth/session` para verificar autenticación. Con este cambio, el cliente recibe siempre una sesión válida cuando hay PAT configurado, sin necesidad de pasar por OAuth.
+
+---
+
+### 9. `src/module/src/runtime/server/routes/admin.ts`
+
+**Cambio:** Si hay PAT de servicio configurado, redirige a la app principal en lugar de forzar OAuth.
+
+```ts
+const hasServiceToken = process.env.STUDIO_GITHUB_TOKEN || process.env.STUDIO_GITLAB_TOKEN
+if (hasServiceToken) {
+  const redirectUrl = redirect && String(redirect).startsWith('/') ? String(redirect) : '/'
+  return sendRedirect(event, redirectUrl)
+}
+```
+
+**Motivo:** La ruta `/_studio` originalmente mostraba una página de login OAuth. Ahora, si hay PAT, redirige a la página de contenido donde Studio se activa automáticamente via el plugin cliente.
+
+---
+
+## Flujo completo (App Padre ↔ Studio)
+
+### Autenticación (PAT)
+```
+Servidor (Nitro)
+├── Lee STUDIO_GITLAB_TOKEN del .env
+├── activation.ts: detecta PAT → activa Studio sin OAuth
+├── session.get.ts: devuelve sesión de servicio con PAT
+└── admin.ts: redirige a app principal si hay PAT
+
+Cliente (Vue)
+├── Plugin studio.client.ts carga en cada página
+├── activation.ts detecta PAT → llama onStudioActivation()
+└── useStudio.ts recibe accessToken = PAT via host.user.get()
+```
+
+### Cambio de branch (postMessage)
 ```
 App Padre (Nuxt)
 ├── Admin selecciona usuario en sidebar
@@ -106,7 +186,7 @@ Studio (dentro de iframe /_studio)
 
 ## Archivos NO modificados (conservados del upstream)
 
-Todos los demás archivos del fork permanecen intactos: plugins, rutas de servidor, AI, media manager, editor TipTap, Monaco, service worker, etc.
+Todos los demás archivos del fork permanecen intactos: plugins, rutas de servidor (meta, medias, AI), editor TipTap, Monaco, service worker, etc.
 
 ---
 
@@ -114,4 +194,13 @@ Todos los demás archivos del fork permanecen intactos: plugins, rutas de servid
 
 - No se han eliminado funciones ni interfaces existentes.
 - Solo se han añadido métodos/propiedades nuevas (`setBranch`, `overrideBranch`).
-- El comportamiento por defecto (sin recibir `postMessage`) es idéntico al upstream: usa el branch configurado en `nuxt.config.ts`.
+- El comportamiento por defecto (sin PAT, sin postMessage) es idéntico al upstream: requiere OAuth y usa el branch configurado en `nuxt.config.ts`.
+
+---
+
+## Build
+
+```bash
+cd /home/darioaxel/Proyectos/fpvirtual-nuxt-studio
+pnpm prepack
+```
