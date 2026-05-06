@@ -23,30 +23,22 @@ export async function defineStudioActivationPlugin(onStudioActivation: (user: St
     })
   }
 
-  // FPVirtual: Si hay un PAT de servicio configurado, usarlo directamente
-  // sin requerir autenticación OAuth. Esto permite el modo facade multi-usuario.
-  const serviceToken = getServiceToken(config.repository.provider)
-  if (serviceToken) {
-    const serviceUser: StudioUser = {
-      provider: config.repository.provider,
-      email: 'service@studio.local',
-      name: 'Studio Service',
-      accessToken: serviceToken,
-      providerId: 'service',
-      avatar: '',
-    }
+  // FPVirtual: Preguntar al servidor si hay sesión (incluyendo sesión de servicio con PAT)
+  // En lugar de depender de process.env en el cliente, siempre hacemos fetch a la sesión.
+  // El servidor (session.get.ts) devuelve una sesión de servicio cuando hay STUDIO_GITLAB_TOKEN.
+  user.value = await $fetch<{ user: StudioUser }>('/__nuxt_studio/auth/session')
+    .then(session => session?.user ?? null)
+    .catch(() => null)
 
+  // Si el servidor devolvió un usuario con accessToken (sesión real o de servicio PAT), activar Studio
+  if (user.value?.accessToken) {
     // Disable prerendering for Studio
     const manifest = await getAppManifest()
     manifest.prerendered = []
 
-    await onStudioActivation(serviceUser)
+    await onStudioActivation(user.value)
     return
   }
-
-  user.value = String(cookie.value) === 'true'
-    ? await $fetch<{ user: StudioUser }>('/__nuxt_studio/auth/session').then(session => session?.user ?? null)
-    : null
 
   let mounted = false
   if (user.value?.email) {
