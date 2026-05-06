@@ -57,14 +57,15 @@ export default defineConfig(({ mode }) => ({
       },
     }),
     libCss(),
-    dts({
-      include: ['src/**/*.ts'],
-      exclude: ['src/**/*.vue'],
-      insertTypesEntry: true,
-      rollupTypes: true,
-      entryRoot: 'src',
-      tsconfigPath: './tsconfig.app.json',
-    }),
+    // dts desactivado: evita errores de tipo del upstream en build local
+    // dts({
+    //   include: ['src/**/*.ts'],
+    //   exclude: ['src/**/*.vue'],
+    //   insertTypesEntry: true,
+    //   rollupTypes: true,
+    //   entryRoot: 'src',
+    //   tsconfigPath: './tsconfig.app.json',
+    // }),
   ],
   optimizeDeps: {
     include: ['vue', 'vue-router', '@unhead/vue/client', '@nuxt/content/runtime', '@vueuse/core', '@unpic/vue', 'scule', 'zod', 'ufo', 'unstorage', 'unstorage/drivers/indexedb', 'unstorage/drivers/null', 'hookable', 'ofetch', '@nuxtjs/mdc/runtime', 'remark-mdc', 'unist-util-visit', 'destr', 'minimark/stringify', 'prosemirror-state', 'prosemirror-transform', 'prosemirror-model', 'prosemirror-view'],
